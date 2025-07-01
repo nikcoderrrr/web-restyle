@@ -135,3 +135,97 @@ async function handleEdit(selection, action) {
   const menu = document.querySelector('.floating-menu');
   if (menu) menu.remove();
 }
+
+
+// Add this after your existing code in scripts.js
+
+// Initialize text selection when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    initializeTextSelection();
+});
+
+function initializeTextSelection() {
+    const resultDiv = document.getElementById("result");
+    
+    // Handle text selection
+    resultDiv.addEventListener('mouseup', function() {
+        const selection = window.getSelection();
+        const selectedText = selection.toString().trim();
+        
+        if (selectedText.length > 0) {
+            // Get position of selection
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            
+            // Remove any existing menu
+            removeExistingMenu();
+            
+            // Create and position new menu
+            createFloatingMenu(rect, selectedText);
+        }
+    });
+    
+    // Close menu when clicking elsewhere
+    document.addEventListener('mousedown', function(e) {
+        if (!e.target.closest('.floating-menu')) {
+            removeExistingMenu();
+        }
+    });
+}
+
+function removeExistingMenu() {
+    const existingMenu = document.querySelector('.floating-menu');
+    if (existingMenu) existingMenu.remove();
+}
+
+function createFloatingMenu(rect, selectedText) {
+    const menu = document.createElement('div');
+    menu.className = 'floating-menu';
+    
+    // Position menu near selection
+    menu.style.position = 'absolute';
+    menu.style.top = `${rect.bottom + window.scrollY + 5}px`;
+    menu.style.left = `${rect.left + window.scrollX}px`;
+    
+    // Add edit options
+    const actions = [
+        {name: 'Rephrase', action: 'rephrase'},
+        {name: 'Simplify', action: 'simplify'},
+        {name: 'Shorten', action: 'shorten'},
+        {name: 'Expand', action: 'lengthen'},
+        {name: 'Formal', action: 'change_tone'}
+    ];
+
+    actions.forEach(item => {
+        const button = document.createElement('button');
+        button.textContent = item.name;
+        button.addEventListener('click', () => handleEditAction(selectedText, item.action));
+        menu.appendChild(button);
+    });
+
+    document.body.appendChild(menu);
+}
+
+async function handleEditAction(text, action) {
+    const editedResult = document.getElementById("edited-result");
+    editedResult.textContent = "Processing...";
+    
+    try {
+        const response = await fetch('/edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: text,
+                action: action
+            }),
+        });
+
+        const data = await response.json();
+        editedResult.textContent = data.result || "No changes made";
+    } catch (error) {
+        console.error("Edit error:", error);
+        editedResult.textContent = `Error: ${error.message}`;
+    }
+    
+    removeExistingMenu();
+}
