@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Web Reconstruction Tool</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Aladin&family=DM+Serif+Display&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <img src="/static/logoweb.png" alt="Logo" class="logo" />
+
+      <h1 class="main-title">WEB RECONSTRUCTION TOOL</h1>
+      <p class="subtitle">YOUR STYLE, YOUR RULES</p>
+
+      <h2 class="tagline">STYLE YOUR WEBSITE THE WAY YOU WANT TO!</h2>
+
+      <form id="styleForm" class="form">
+        <label for="url" class="form-label">Website URL</label>
+        <input
+          type="url"
+          id="url"
+          name="url"
+          placeholder="https://example.com"
+          required
+        />
+        <button type="submit" class="submit-btn">STYLE IT NOW</button>
+      </form>
+
+      <!-- New: Scraped content output -->
+      <div id="result-container" class="result-container">
+        <h2 class="result-title">Scraped Content</h2>
+        <div id="result" class="result-box">
+          Enter a URL above and click "Style It Now" to view content.
+        </div>
+      </div>
+    </div>
+
+    <div id="editor-panel" class="result-container" style="margin-top: 2rem">
+      <h2 class="result-title">Edited Output</h2>
+      <div id="edited-result" class="result-box">Select text to edit</div>
+    </div>
+
+    <script src="/static/scripts.js"></script>
+  </body>
+</html>
