@@ -25,22 +25,33 @@
           name="url"
           placeholder="https://example.com"
           required
+          class="url-input"
         />
         <button type="submit" class="submit-btn">STYLE IT NOW</button>
       </form>
 
       <div class="dual-panel">
         <div class="panel left-panel">
-          <div class="panel-header">Body Content</div>
+          <div class="panel-header">
+            <span class="panel-title">Body Content</span>
+            <span class="panel-subtitle"
+              >Source content from scraped website</span
+            >
+          </div>
           <div id="result" class="panel-content">
             Enter a URL above and click "Style It Now" to view content.
           </div>
         </div>
 
         <div class="panel right-panel">
-          <div class="panel-header">Edited Output</div>
+          <div class="panel-header">
+            <span class="panel-title">Edited Output</span>
+            <span class="panel-subtitle"
+              >AI-enhanced content modifications</span
+            >
+          </div>
           <div id="edited-result" class="panel-content">
-            Select text to edit
+            Select text from the left panel to edit
           </div>
         </div>
       </div>
