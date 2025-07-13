@@ -1,3 +1,5 @@
+# Optimized main.py with faster Ollama integration
+
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -11,6 +13,9 @@ from PIL import Image, ImageEnhance, ImageFilter
 import requests as img_requests
 from urllib.parse import urlparse
 import os
+import asyncio
+import aiohttp
+import json
 
 from scraper import scrape_text_from_url
 
@@ -31,6 +36,26 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Create processed images directory if it doesn't exist
 os.makedirs("static/processed_images", exist_ok=True)
 
+# Global session for connection pooling
+session = None
+
+async def get_session():
+    global session
+    if session is None:
+        timeout = aiohttp.ClientTimeout(total=60)  # Reduced timeout
+        session = aiohttp.ClientSession(timeout=timeout)
+    return session
+
+@app.on_event("startup")
+async def startup_event():
+    await get_session()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global session
+    if session:
+        await session.close()
+
 @app.get("/")
 def read_index():
     return FileResponse("static/index.html")
@@ -48,51 +73,80 @@ class EditRequest(BaseModel):
     text: str
     action: Literal['rephrase', 'simplify', 'lengthen', 'tone_funny', 'tone_formal', 'tone_serious', 'tone_sad']
 
+# Optimized prompts for faster processing
+OPTIMIZED_PROMPTS = {
+    "rephrase": "Rewrite: {text}",
+    "simplify": "Simplify: {text}",
+    "lengthen": "Expand: {text}",
+    "tone_funny": "Make funny: {text}",
+    "tone_formal": "Make formal: {text}",
+    "tone_serious": "Make serious: {text}",
+    "tone_sad": "Make sad: {text}",
+}
+
+async def call_ollama_async(prompt: str, max_tokens: int = 150):
+    """Async Ollama call with optimized parameters"""
+    session = await get_session()
+    
+    payload = {
+        "model": "llama3.2:1b",  # Much faster, smaller model
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "num_predict": max_tokens,  # Limit output length
+            "num_ctx": 1024,  # Reduced context window
+            "num_batch": 512,  # Batch size optimization
+            "num_gpu": 1,  # Use GPU if available
+            "num_thread": 4,  # Limit CPU threads
+            "repeat_penalty": 1.1,
+            "top_k": 40
+        }
+    }
+    
+    try:
+        async with session.post("http://localhost:11434/api/generate", json=payload) as response:
+            if response.status == 200:
+                result = await response.json()
+                return result.get("response", "").strip()
+            else:
+                raise Exception(f"Ollama HTTP error: {response.status}")
+    except Exception as e:
+        raise Exception(f"Ollama connection error: {str(e)}")
+
 @app.post("/edit")
 async def edit_text(request: EditRequest):
     print(f"Received edit request for action: {request.action}")
     
-    prompt_map = {
-        "rephrase": f"Rephrase this text while keeping the same meaning:\n{request.text}",
-        "simplify": f"Simplify this text for better understanding:\n{request.text}",
-        "lengthen": f"Expand on this text with more details:\n{request.text}",
-        "tone_funny": f"Rewrite this text in a funny, humorous tone:\n{request.text}",
-        "tone_formal": f"Rewrite this text in a formal, professional tone:\n{request.text}",
-        "tone_serious": f"Rewrite this text in a serious, earnest tone:\n{request.text}",
-        "tone_sad": f"Rewrite this text in a sad, melancholic tone:\n{request.text}",
-    }
+    # Check text length and truncate if too long
+    max_input_length = 300  # Limit input length for speed
+    text = request.text[:max_input_length]
+    if len(request.text) > max_input_length:
+        text += "..."
     
-    prompt = prompt_map.get(request.action, request.text)
+    # Use optimized, shorter prompts
+    prompt = OPTIMIZED_PROMPTS.get(request.action, "Rewrite: {text}").format(text=text)
     
     # First, check if Ollama is running
     try:
-        health_response = requests.get("http://localhost:11434/", timeout=5)
+        session = await get_session()
+        async with session.get("http://localhost:11434/") as response:
+            if response.status != 200:
+                raise Exception("Ollama not responding")
         print("✅ Ollama is running")
-    except requests.exceptions.RequestException:
+    except Exception:
         return {"error": "Ollama is not running. Please start Ollama first by running 'ollama serve' in your terminal."}
     
     try:
         print("🤖 Sending request to Ollama...")
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "llama2",
-                "prompt": prompt,
-                "stream": False
-            },
-            timeout=120  # Increased timeout to 2 minutes
-        )
-        response.raise_for_status()
-        result = response.json().get("response", "").strip()
+        result = await call_ollama_async(prompt, max_tokens=100)  # Shorter responses
         print("✅ Ollama response received")
         return {"result": result}
-    except requests.exceptions.Timeout:
-        return {"error": "Request timed out. The model might be taking too long to respond. Try with shorter text or check if Ollama is running properly."}
-    except requests.exceptions.ConnectionError:
-        return {"error": "Cannot connect to Ollama. Make sure Ollama is running by executing 'ollama serve' in your terminal."}
     except Exception as e:
         return {"error": f"Ollama error: {str(e)}"}
 
+# Keep the existing image processing code unchanged
 class ImageProcessRequest(BaseModel):
     image_url: str
     action: Literal['resize', 'compress', 'enhance_brightness', 'enhance_contrast', 'blur', 'sharpen', 'grayscale', 'sepia']
@@ -228,9 +282,10 @@ async def test_scrape():
 @app.get("/ollama-status")
 async def check_ollama_status():
     try:
-        response = requests.get("http://localhost:11434/", timeout=5)
-        return {"status": "running", "message": "Ollama is accessible"}
-    except requests.exceptions.RequestException as e:
+        session = await get_session()
+        async with session.get("http://localhost:11434/") as response:
+            return {"status": "running", "message": "Ollama is accessible"}
+    except Exception as e:
         return {"status": "not_running", "message": f"Ollama is not accessible: {str(e)}"}
 
 @app.get("/health")
